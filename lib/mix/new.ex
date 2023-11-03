@@ -293,16 +293,37 @@ defmodule Mix.Tasks.GenDSL.Plugin do
       [
         # {:dep_from_hexpm, "~> 0.3.0"},
         # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+        {:ecto, "~> 3.9"}
       ]
     end
   end
   """)
 
   embed_template(:lib, """
-  defmodule <%= @mod %> do
+  defmodule GenDSL.Model.<%= @mod %>.SampleElement do
+    use Ecto.Schema
+    import Ecto.Changeset
     @moduledoc \"""
     Documentation for `<%= @mod %>`.
     \"""
+
+    schema "SampleElement" do
+      field :name, :string
+      field :command, :string, default: "new"
+    end
+
+    @required_fields ~w(name)a
+    @optional_fields ~w(command)a
+
+    def changeset(params \\ %{}) do
+      %__MODULE__{}
+        |> cast(params, @required_fields ++ @optional_fields, required: false)
+        |> validate_required(@required_fields)
+    end
+
+    def to_command(%SampleElement{} = sample_element) do
+      return ""
+    end
 
     @doc \"""
     Hello world.
@@ -316,6 +337,8 @@ defmodule Mix.Tasks.GenDSL.Plugin do
     def hello do
       :world
     end
+
+
   end
   """)
 

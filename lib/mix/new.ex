@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.GenDSL.Plugin.New do
+defmodule Mix.Tasks.GenDSL.Plugin do
   use Mix.Task
   import Mix.Generator
 
@@ -50,8 +50,6 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
   @switches [
     app: :string,
     module: :string,
-    sup: :boolean,
-    umbrella: :boolean
   ]
 
   @impl true
@@ -75,20 +73,15 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
         end
 
         File.cd!(path, fn ->
-          if opts[:umbrella] do
-            generate_umbrella(app, mod, path, opts)
-          else
             generate(app, mod, path, opts)
-          end
         end)
     end
   end
 
-  defp generate(app, mod, path, opts) do
+  defp generate(app, mod, path, _opts) do
     assigns = [
       app: app,
       mod: mod,
-      sup_app: sup_app(mod, !!opts[:sup]),
       version: get_version(System.version())
     ]
 
@@ -98,18 +91,11 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
     create_file(".formatter.exs", formatter_template(assigns))
     create_file(".gitignore", gitignore_template(assigns))
 
-    if in_umbrella?() do
-      create_file("mix.exs", mix_exs_apps_template(assigns))
-    else
-      create_file("mix.exs", mix_exs_template(assigns))
-    end
+    create_file("mix.exs", mix_exs_template(assigns))
 
     create_directory("lib")
     create_file("lib/#{mod_filename}.ex", lib_template(assigns))
 
-    if opts[:sup] do
-      create_file("lib/#{mod_filename}/application.ex", lib_app_template(assigns))
-    end
 
     create_directory("test")
     create_file("test/test_helper.exs", test_helper_template(assigns))
@@ -144,41 +130,9 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
       ~w(eex elixir ex_unit iex logger mix)a
   end
 
-  defp sup_app(_mod, false), do: ""
-  defp sup_app(mod, true), do: ",\n      mod: {#{mod}.Application, []}"
 
   defp cd_path("."), do: ""
   defp cd_path(path), do: "cd #{path}\n    "
-
-  defp generate_umbrella(_app, mod, path, _opts) do
-    assigns = [app: nil, mod: mod]
-
-    create_file("README.md", readme_template(assigns))
-    create_file(".formatter.exs", formatter_umbrella_template(assigns))
-    create_file(".gitignore", gitignore_template(assigns))
-    create_file("mix.exs", mix_exs_umbrella_template(assigns))
-
-    create_directory("apps")
-
-    create_directory("config")
-    create_file("config/config.exs", config_umbrella_template(assigns))
-
-    """
-
-    Your umbrella project was created successfully.
-    Inside your project, you will find an apps/ directory
-    where you can create and host many apps:
-
-        #{cd_path(path)}cd apps
-        mix new my_app
-
-    Commands like "mix compile" and "mix test" when executed
-    in the umbrella project root will automatically run
-    for each application in the apps/ directory.
-    """
-    |> String.trim_trailing()
-    |> Mix.shell().info()
-  end
 
   defp check_application_name!(name, inferred?) do
     if message = invalid_app(name) || reserved_app(name) do
@@ -243,21 +197,7 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
       end
   end
 
-  defp in_umbrella? do
-    Mix.Project.umbrella?() or
-      (
-        apps = Path.dirname(File.cwd!())
 
-        try do
-          Mix.Project.in_project(:umbrella_check, "../..", fn _ ->
-            path = Mix.Project.config()[:apps_path]
-            path && Path.expand(path) == apps
-          end)
-        catch
-          _, _ -> false
-        end
-      )
-  end
 
   embed_template(:readme, """
   # <%= @mod %>
@@ -358,87 +298,6 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
   end
   """)
 
-  embed_template(:mix_exs_apps, """
-  defmodule <%= @mod %>.MixProject do
-    use Mix.Project
-
-    def project do
-      [
-        app: :<%= @app %>,
-        version: "0.1.0",
-        build_path: "../../_build",
-        config_path: "../../config/config.exs",
-        deps_path: "../../deps",
-        lockfile: "../../mix.lock",
-        elixir: "~> <%= @version %>",
-        start_permanent: Mix.env() == :prod,
-        deps: deps()
-      ]
-    end
-
-    # Run "mix help compile.app" to learn about applications.
-    def application do
-      [
-        extra_applications: [:logger]<%= @sup_app %>
-      ]
-    end
-
-    # Run "mix help deps" to learn about dependencies.
-    defp deps do
-      [
-        # {:dep_from_hexpm, "~> 0.3.0"},
-        # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
-        # {:sibling_app_in_umbrella, in_umbrella: true}
-      ]
-    end
-  end
-  """)
-
-  embed_template(:mix_exs_umbrella, """
-  defmodule <%= @mod %>.MixProject do
-    use Mix.Project
-
-    def project do
-      [
-        apps_path: "apps",
-        version: "0.1.0",
-        start_permanent: Mix.env() == :prod,
-        deps: deps()
-      ]
-    end
-
-    # Dependencies listed here are available only for this
-    # project and cannot be accessed from applications inside
-    # the apps folder.
-    #
-    # Run "mix help deps" for examples and options.
-    defp deps do
-      []
-    end
-  end
-  """)
-
-  embed_template(:config_umbrella, ~S"""
-  # This file is responsible for configuring your umbrella
-  # and **all applications** and their dependencies with the
-  # help of the Config module.
-  #
-  # Note that all applications in your umbrella share the
-  # same configuration and dependencies, which is why they
-  # all use the same configuration file. If you want different
-  # configurations or dependencies per app, it is best to
-  # move said applications out of the umbrella.
-  import Config
-
-  # Sample configuration:
-  #
-  #     config :logger, :console,
-  #       level: :info,
-  #       format: "$date $time [$level] $metadata$message\n",
-  #       metadata: [:user_id]
-  #
-  """)
-
   embed_template(:lib, """
   defmodule <%= @mod %> do
     @moduledoc \"""
@@ -460,28 +319,6 @@ defmodule Mix.Tasks.GenDSL.Plugin.New do
   end
   """)
 
-  embed_template(:lib_app, """
-  defmodule <%= @mod %>.Application do
-    # See https://hexdocs.pm/elixir/Application.html
-    # for more information on OTP Applications
-    @moduledoc false
-
-    use Application
-
-    @impl true
-    def start(_type, _args) do
-      children = [
-        # Starts a worker by calling: <%= @mod %>.Worker.start_link(arg)
-        # {<%= @mod %>.Worker, arg}
-      ]
-
-      # See https://hexdocs.pm/elixir/Supervisor.html
-      # for other strategies and supported options
-      opts = [strategy: :one_for_one, name: <%= @mod %>.Supervisor]
-      Supervisor.start_link(children, opts)
-    end
-  end
-  """)
 
   embed_template(:test, """
   defmodule <%= @mod %>Test do
